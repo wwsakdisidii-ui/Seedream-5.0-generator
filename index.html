@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seedream 5.0 generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #0f0f11;
+            --bg-panel: #18181c;
+            --border: #2a2a32;
+            --text: #e3e3e6;
+            --accent: #5ba4ff;
+            --user-msg: #283547;
+            --model-msg: #222226;
+        }
+
+        body {
+            font-family: 'Roboto', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        h1 { margin: 0; font-size: 1.1rem; letter-spacing: 0.5px; font-weight: 500; }
+
+        .controls-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            outline: none;
+            font-family: inherit;
+            width: 320px;
+        }
+
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 800px;
+            width: 100%;
+            margin: 0 auto;
+            box-sizing: border-box;
+            scroll-behavior: smooth; 
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 14px 18px;
+            border-radius: 12px;
+            line-height: 1.6;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            animation: fadeIn 0.2s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user-message {
+            align-self: flex-end;
+            background-color: var(--user-msg);
+            color: #fff;
+        }
+
+        .model-message {
+            align-self: flex-start;
+            background-color: var(--model-msg);
+            border: 1px solid var(--border);
+        }
+
+        .generated-image {
+            margin-top: 10px;
+            max-width: 100%;
+            max-height: 450px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            display: block;
+        }
+
+        footer {
+            background-color: var(--bg-panel);
+            border-top: 1px solid var(--border);
+            padding: 15px 20px;
+            z-index: 10;
+        }
+
+        .input-area {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            gap: 12px;
+        }
+
+        textarea {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            resize: none;
+            height: 24px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 0 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Seedream 5.0 Workspace</h1>
+        <div class="controls-group">
+            <input type="text" id="apiKeyInput" value="ark-252ac1ba-d805-4fb5-b06b-d25afe7e4c18-94950" placeholder="Ark API Authorization Token">
+        </div>
+    </header>
+
+    <main id="chatWindow">
+        <div class="message model-message">terminal isolated to seedream-5.0. enter an image generation description below.</div>
+    </main>
+
+    <footer>
+        <form class="input-area" id="chatForm" onsubmit="return false;">
+            <textarea id="userInput" placeholder="Describe the image you want to create..."></textarea>
+            <button type="submit" id="sendBtn">Generate</button>
+        </form>
+    </footer>
+
+    <script>
+        const chatWindow = document.getElementById('chatWindow');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                executePipeline();
+            }
+        });
+
+        sendBtn.addEventListener('click', executePipeline);
+
+        async function executePipeline() {
+            const apiKey = apiKeyInput.value.trim();
+            const text = userInput.value.trim();
+
+            if (!apiKey) return alert('Ark API key required.');
+            if (!text) return;
+
+            appendMessage(text, 'user-message');
+            userInput.value = '';
+            
+            sendBtn.disabled = true;
+            userInput.disabled = true;
+
+            const responseNode = appendMessage('generating image via seedream-5.0...', 'model-message');
+            
+            try {
+                const response = await fetch('https://ark.ap-southeast-1.bytepluses.com/api/v3/images/generations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "seedream-5.0-260128",
+                        prompt: text,
+                        size: "2K",
+                        output_format: "png",
+                        watermark: false
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.data && data.data[0] && (data.data[0].url || data.data[0].b64_json)) {
+                    responseNode.textContent = `image successfully compiled via seedream 5.0 pipeline map.`;
+                    const targetSrc = data.data[0].url || `data:image/png;base64,${data.data[0].b64_json}`;
+                    
+                    const img = document.createElement('img');
+                    img.className = 'generated-image';
+                    img.src = targetSrc;
+                    responseNode.appendChild(img);
+                } else {
+                    throw new Error(data.error?.message || "empty api tracking response structure");
+                }
+                
+            } catch (error) {
+                responseNode.textContent = `[error generating image]: ${error.message.toLowerCase()}`;
+            } finally {
+                sendBtn.disabled = false;
+                userInput.disabled = false;
+                userInput.focus();
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+        }
+
+        function appendMessage(text, className) {
+            const div = document.createElement('div');
+            div.className = `message ${className}`;
+            div.textContent = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return div;
+        }
+    </script>
+</body>
+</html>
