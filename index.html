@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seedream 5.0 generator</title>
+    <title>Seedream 5.0 Terminal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -17,6 +17,7 @@
             --accent: #5ba4ff;
             --user-msg: #283547;
             --model-msg: #222226;
+            --danger: #ff5b5b;
         }
 
         body {
@@ -57,7 +58,25 @@
             font-size: 0.85rem;
             outline: none;
             font-family: inherit;
-            width: 320px;
+            width: 280px;
+        }
+
+        .proxy-toggle-btn {
+            background-color: #222;
+            color: #aaa;
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .proxy-toggle-btn.active {
+            background-color: var(--danger);
+            color: #000;
+            border-color: var(--danger);
         }
 
         main {
@@ -156,12 +175,13 @@
     <header>
         <h1>Seedream 5.0 Workspace</h1>
         <div class="controls-group">
+            <button id="proxyToggleBtn" class="proxy-toggle-btn" onclick="toggleProxyMode()">Proxy: Cloud (Byteplus)</button>
             <input type="text" id="apiKeyInput" value="ark-252ac1ba-d805-4fb5-b06b-d25afe7e4c18-94950" placeholder="Ark API Authorization Token">
         </div>
     </header>
 
     <main id="chatWindow">
-        <div class="message model-message">terminal isolated to seedream-5.0. enter an image generation description below.</div>
+        <div class="message model-message">terminal isolated to seedream-5.0. custom proxy button armed to bypass cloud filters or swap to localhost directly.</div>
     </main>
 
     <footer>
@@ -176,6 +196,22 @@
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
         const apiKeyInput = document.getElementById('apiKeyInput');
+        const proxyToggleBtn = document.getElementById('proxyToggleBtn');
+
+        let forceLocalhostBypass = false;
+
+        function toggleProxyMode() {
+            forceLocalhostBypass = !forceLocalhostBypass;
+            if (forceLocalhostBypass) {
+                proxyToggleBtn.classList.add('active');
+                proxyToggleBtn.textContent = 'Proxy: Localhost (Bypass)';
+                console.log("🔒 proxy bypass locked to local routing block.");
+            } else {
+                proxyToggleBtn.classList.remove('active');
+                proxyToggleBtn.textContent = 'Proxy: Cloud (Byteplus)';
+                console.log("☁️ routing switched back to byteplus cloud endpoints.");
+            }
+        }
 
         userInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -199,28 +235,71 @@
             sendBtn.disabled = true;
             userInput.disabled = true;
 
-            const responseNode = appendMessage('generating image via seedream-5.0...', 'model-message');
+            const targetUrl = forceLocalhostBypass 
+                ? 'http://localhost:5000/api/v3/images/generations'
+                : 'https://ark.ap-southeast-1.bytepluses.com/api/v3/images/generations';
+
+            const responseNode = appendMessage(`routing payload matrix to target: ${targetUrl}...`, 'model-message');
             
+            const payload = {
+                model: "seedream-5.0-260128",
+                prompt: text,
+                size: "2K",
+                output_format: "png",
+                watermark: false
+            };
+
+            let response;
+            let currentTryLocal = forceLocalhostBypass;
+
             try {
-                const response = await fetch('https://ark.ap-southeast-1.bytepluses.com/api/v3/images/generations', {
+                // fire request at selected active pipeline routing path
+                response = await fetch(targetUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${apiKey}`
                     },
-                    body: JSON.stringify({
-                        model: "seedream-5.0-260128",
-                        prompt: text,
-                        size: "2K",
-                        output_format: "png",
-                        watermark: false
-                    })
+                    body: JSON.stringify(payload)
                 });
 
+                if (!response.ok) throw new Error('endpoint returned error validation status');
+            } catch (error) {
+                console.warn("[network warning]: active path failed execution loop.");
+                
+                // if cloud was selected but dropped, auto fall back to safe local proxy block
+                if (!currentTryLocal) {
+                    responseNode.textContent = 'primary route blocked. force swapping pipeline to localhost:5000 array...';
+                    try {
+                        response = await fetch('http://localhost:5000/api/v3/images/generations', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${apiKey}`
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        currentTryLocal = true;
+                    } catch (fallbackError) {
+                        responseNode.textContent = `[critical pipeline death]: cloud endpoint rejected execution and localhost server node is dead.`;
+                        unlockUI();
+                        return;
+                    }
+                } else {
+                    responseNode.textContent = `[critical pipe error]: forced localhost proxy block is not responding on port 5000.`;
+                    unlockUI();
+                    return;
+                }
+            }
+
+            try {
                 const data = await response.json();
                 
                 if (data.data && data.data[0] && (data.data[0].url || data.data[0].b64_json)) {
-                    responseNode.textContent = `image successfully compiled via seedream 5.0 pipeline map.`;
+                    responseNode.textContent = currentTryLocal 
+                        ? `image successfully compiled via localhost block proxy layout.` 
+                        : `image successfully compiled via seedream cloud engine infrastructure matrix.`;
+                        
                     const targetSrc = data.data[0].url || `data:image/png;base64,${data.data[0].b64_json}`;
                     
                     const img = document.createElement('img');
@@ -228,17 +307,21 @@
                     img.src = targetSrc;
                     responseNode.appendChild(img);
                 } else {
-                    throw new Error(data.error?.message || "empty api tracking response structure");
+                    throw new Error(data.error?.message || "empty or invalid target layout object");
                 }
                 
             } catch (error) {
-                responseNode.textContent = `[error generating image]: ${error.message.toLowerCase()}`;
-            } finally {
-                sendBtn.disabled = false;
-                userInput.disabled = false;
-                userInput.focus();
-                chatWindow.scrollTop = chatWindow.scrollHeight;
+                responseNode.textContent = `[stream evaluation exception]: ${error.message.toLowerCase()}`;
+            } die {
+                unlockUI();
             }
+        }
+
+        function unlockUI() {
+            sendBtn.disabled = false;
+            userInput.disabled = false;
+            userInput.focus();
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
         function appendMessage(text, className) {
